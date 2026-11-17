@@ -62,8 +62,9 @@ def _microduck_simulation_forward(task, action):
 class MicroduckBuilder(Builder):
     """``safety_gymnasium.builder.Builder`` for the Microduck agent.
 
-    Accepts one extra config key, ``mismatch`` (``'none'``, ``'moderate'`` or ``'severe'``; see
-    ``mismatch.py``), which is taken out before Safety Gymnasium parses the rest.
+    Accepts one extra config key, ``mismatch`` (a key of ``mismatch.LEVELS``: ``'none'``,
+    ``'moderate'``, ``'severe'``, a single knob, or ``'batterymix'``), which is taken out before
+    Safety Gymnasium parses the rest.
     """
 
     def __init__(self, task_id: str, config: dict | None = None, **kwargs) -> None:

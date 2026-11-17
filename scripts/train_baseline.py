@@ -7,10 +7,34 @@ overridden, so a Microduck run and a Point run differ only in --env:
     python scripts/train_baseline.py --algo PPOLag --env SafetyMicroduckGoal1-v0
     python scripts/train_baseline.py --algo PPOLag --env SafetyPointGoal1-v0      # reference
 
+How this maps onto the project's CMDP (proposal Section 2):
+
+- state s_t: the 60-D Goal1 observation; action a_t in [-1, 1]^2 -> (v, omega) = (0.4 a1, 1.0 a2);
+  reward (D_{t-1} - D_t) + 1[goal reached]; cost c_t = 1[inside any hazard] (Safety Gymnasium's
+  default indicator cost); episodes end at 1,000 steps or on a fall. All of this is the env.
+- PPOLag's multiplier update uses the undiscounted mean episode cost (Metrics/EpCost) against
+  cost_limit = 25, i.e. J_c(pi) <= d = 25 exactly as in the formulation. The policy's advantage
+  estimates use OmniSafe's gamma = 0.99 (reward and cost), as in its benchmarks.
+- In the project plan these are reference baselines: PPO is the unconstrained learned policy
+  and PPO-Lag the deep-RL primal-dual method (PPO primal step, gradient-ascent dual step). The
+  main primal-dual method (M2) uses random search on a linear policy instead.
+
+Train/deploy design (proposal Table 2): train with --env on the nominal robot (or a mismatched
+one), then deploy the checkpoints elsewhere with evaluate_baseline.py / capture_training.py
+--env, e.g.
+
+    python scripts/train_baseline.py --algo PPOLag --env SafetyMicroduckGoal1-v0 --total-steps 2000000
+    python scripts/train_baseline.py --algo PPOLag --env SafetyMicroduckGoal1MismatchSevere-v0 --total-steps 2000000
+    python scripts/train_baseline.py --algo PPOLag --env SafetyMicroduckGoal1MismatchBatteryMix-v0 --total-steps 2000000
+    python scripts/capture_training.py <run dir> --env SafetyMicroduckGoal1MismatchSevere-v0
+
+The BatteryMix run is the "standard" Q3 variant (one multiplier on the mean cost over 7.4 V and
+6.0 V episodes); the robust variant (one multiplier per strength) is not an OmniSafe algorithm.
+
 Stock settings: 1 env, 20,000 steps per epoch, 10M total steps, cost limit 25 (Lagrangian
-methods), 64x64 tanh actor/critic. The Microduck env runs ~270 steps/s on one CPU core (Point:
-~700), so the default 10M steps takes roughly 12+ hours; use --total-steps for shorter runs.
-Logs and checkpoints go to runs/<algo>-{<env>}/seed-XXX-<time>/.
+methods), 64x64 tanh actor/critic. The proposal's runs use --total-steps 2000000 and seeds 0-2.
+End to end the duck trains at roughly 65 env steps/s on this laptop (plugged in), so 2M steps
+is about 8-9 h. Logs and checkpoints go to runs/<algo>-{<env>}/seed-XXX-<time>/.
 """
 
 from __future__ import annotations

@@ -5,6 +5,8 @@ Run with:  python -m pytest tests -q   (about a minute; each reset compiles the 
 
 from __future__ import annotations
 
+import dataclasses
+
 import mujoco
 import numpy as np
 import pytest
@@ -83,6 +85,35 @@ def test_mismatch_levels():
         env.step(np.array([1.0, 0.0]))
         commands.append(agent.command[0])
     assert commands[4] == 0 and commands[5] > 0  # command arrives 5 steps (100 ms) late
+    env.close()
+
+
+def test_single_knob_levels():
+    """Each single-knob level changes only its own knob, at the severe value."""
+    severe = microduck_safety_gym.mismatch.LEVELS['severe']
+    expected = {
+        'Delay': {'command_delay_steps': severe.command_delay_steps},
+        'Battery': {'battery_vin': severe.battery_vin},
+        'Shoves': {'shove_force': severe.shove_force},
+        'Friction': {'floor_friction': severe.floor_friction},
+    }
+    nominal = microduck_safety_gym.mismatch.Mismatch()
+    for level, changed in expected.items():
+        env_id = f'SafetyMicroduckGoal1Mismatch{level}-v0'
+        assert env_id in microduck_safety_gym.ENV_IDS
+        knobs = microduck_safety_gym.mismatch.LEVELS[level.lower()]
+        assert knobs == dataclasses.replace(nominal, **changed)
+
+
+def test_battery_mix_draws_both_strengths():
+    env = safety_gymnasium.make('SafetyMicroduckGoal1MismatchBatteryMix-v0')
+    agent = env.unwrapped.task.agent
+    seen = set()
+    for seed in range(8):
+        env.reset(seed=seed)
+        seen.add(agent.battery_vin)
+        assert agent.controller.bam_model.actuator.vin == agent.battery_vin
+    assert seen == {7.4, 6.0}
     env.close()
 
 

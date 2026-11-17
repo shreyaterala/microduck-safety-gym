@@ -6,8 +6,10 @@ Importing this package (before ``safety_gymnasium`` or ``omnisafe``):
 2. adds ``Microduck`` to ``safety_gymnasium.agents`` next to Point, Car, Doggo, Racecar, Ant;
 3. registers ``SafetyMicroduck{GoalBase,Goal0,Goal1,Goal2}-v0`` (plus the ``Gymnasium`` and
    ``Vision`` variants), using the same task configs and 1,000-step limit as the other robots;
-4. registers ``SafetyMicroduck<task>Mismatch{Moderate,Severe}-v0``: the same tasks with command
-   delay, battery sag and shoves (``mismatch.py``).
+4. registers ``SafetyMicroduck<task>Mismatch<Level>-v0``: the same tasks with command delay,
+   battery sag, shoves and low friction (``mismatch.py``). Levels: ``Moderate`` and ``Severe``
+   (all knobs), ``Delay``/``Battery``/``Shoves``/``Friction`` (one knob at its severe value),
+   and ``BatteryMix`` (each episode at 7.4 V or 6.0 V, 50/50).
 
     import microduck_safety_gym  # noqa: F401
     import safety_gymnasium
@@ -41,6 +43,9 @@ _AGENT_CONFIG = {
 }
 
 ENV_IDS: list[str] = []
+# Env-id suffixes (Mismatch<Level>) for the levels in mismatch.LEVELS: the two combined levels,
+# each knob alone at its severe value, and the Q3 50/50 battery training mix.
+MISMATCH_LEVELS = ('Moderate', 'Severe', 'Delay', 'Battery', 'Shoves', 'Friction', 'BatteryMix')
 
 
 def _register(env_id: str, config: dict, task_id: str) -> None:
@@ -73,7 +78,7 @@ def _register_all() -> None:
         # As upstream: the Vision variant keeps the base env id as task_id (it names the task class).
         vision = {'observe_vision': True, 'observation_flatten': False, **config}
         _register(f'Safety{ROBOT_NAME}{task_name}Vision-v0', vision, task_id=env_id)
-        for level in ('Moderate', 'Severe'):
+        for level in MISMATCH_LEVELS:
             _register(
                 f'Safety{ROBOT_NAME}{task_name}Mismatch{level}-v0',
                 {**config, 'mismatch': level.lower()},

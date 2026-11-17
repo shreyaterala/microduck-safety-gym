@@ -111,6 +111,33 @@ Stock settings: 1 env, 20k steps per epoch, 10M total steps, cost limit 25, 64×
 non-stock default is `--save-every 5` (a checkpoint every 100k steps instead of OmniSafe's every 100
 epochs); it changes what is saved, not what is learned.
 
+**How they fit the project's CMDP.** The env supplies the formulation unchanged: 60-D state,
+(forward, turn) action scaled to (0.4 m/s, 1.0 rad/s), reward = progress + goal bonus, cost =
+1 if inside any hazard (Safety Gymnasium's indicator cost), episodes of 1,000 steps that also end
+on a fall. PPO-Lag's multiplier update compares the undiscounted mean episode cost with
+`cost_limit` = 25, which is the constraint J_c(π) ≤ d = 25; the advantage estimates use OmniSafe's
+γ = 0.99. In the project these are reference baselines: PPO is the unconstrained learned policy
+and PPO-Lag the deep-RL primal-dual method; the main primal-dual method trains a linear policy
+by random search instead.
+
+**Train / deploy.** Train on one env and deploy the checkpoints on another with `--env`
+(evaluated with the training run's observation normalizer):
+
+```bash
+# train on the nominal robot, then deploy on mismatched ones (Q1)
+uv run python scripts/train_baseline.py --algo PPOLag --env SafetyMicroduckGoal1-v0 --total-steps 2000000 --seed 0
+uv run python scripts/evaluate_baseline.py "<run dir>" --env SafetyMicroduckGoal1MismatchSevere-v0
+uv run python scripts/capture_training.py "<run dir>" --env SafetyMicroduckGoal1MismatchModerate-v0   # -> <run>/capture-<env>/
+# train under severe mismatch (Q1, training-time violations)
+uv run python scripts/train_baseline.py --algo PPOLag --env SafetyMicroduckGoal1MismatchSevere-v0 --total-steps 2000000
+# Q3 "standard" variant: one multiplier on the mean cost of 7.4 V and 6.0 V episodes
+uv run python scripts/train_baseline.py --algo PPOLag --env SafetyMicroduckGoal1MismatchBatteryMix-v0 --total-steps 2000000
+```
+
+The robust Q3 variant (one multiplier per motor strength) is not an OmniSafe algorithm. Runs
+from before the reset fix (bind before setting the standing pose, Nov 2026) started each episode
+from a collapsed pose; retrain rather than compare against them.
+
 ### Capturing training
 
 `capture_training.py` turns a run into something you can watch. For each checkpoint it rolls out
@@ -139,14 +166,22 @@ against published 10M-step numbers.
 
 ## Mismatch levels
 
-`SafetyMicroduck<task>Mismatch{Moderate,Severe}-v0` are the same tasks with the robot following its
+`SafetyMicroduck<task>Mismatch<Level>-v0` are the same tasks with the robot following its
 commands less faithfully (`microduck_safety_gym/mismatch.py`):
 
 | Level | Command delay | Servo supply | Shoves (0.1 s, every 2-4 s) | Floor friction |
 |---|---|---|---|---|
 | none (`...Goal1-v0`) | 0 ms | 7.4 V | none | 1.0 |
-| moderate | 40 ms | 6.6 V | 2.0 N | 0.4 |
-| severe | 100 ms | 6.0 V | 2.5 N | 0.3 |
+| `Moderate` | 40 ms | 6.6 V | 2.0 N | 0.4 |
+| `Severe` | 100 ms | 6.0 V | 2.5 N | 0.3 |
+| `Delay` | 100 ms | 7.4 V | none | 1.0 |
+| `Battery` | 0 ms | 6.0 V | none | 1.0 |
+| `Shoves` | 0 ms | 7.4 V | 2.5 N | 1.0 |
+| `Friction` | 0 ms | 7.4 V | none | 0.3 |
+| `BatteryMix` | 0 ms | 7.4 V or 6.0 V, 50/50 per episode | none | 1.0 |
+
+`Delay`, `Battery`, `Shoves` and `Friction` are the single-knob ablation (each knob alone at its
+severe value). `Battery` is the "reduced motor strength" of Q3 and `BatteryMix` its training mix.
 
 Shoves and friction were set just below the point where the walking policy starts falling
 (see the comments in `mismatch.py`; `scripts/check_terrain.py` measures the policy alone).

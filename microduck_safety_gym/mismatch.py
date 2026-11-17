@@ -29,6 +29,9 @@ class Mismatch:
     shove_duration: float = 0.1  # s
     shove_interval: tuple[float, float] = (2.0, 4.0)  # s, uniform
     floor_friction: float | None = None  # sliding mu; None = unchanged (1.0)
+    # If set, each episode draws its supply voltage uniformly from these values instead of
+    # using battery_vin (the 50/50 nominal/reduced-strength training mix of Q3).
+    battery_vin_choices: tuple[float, ...] | None = None
 
     @property
     def shoves(self) -> bool:
@@ -51,4 +54,11 @@ LEVELS: dict[str, Mismatch] = {
     'severe': Mismatch(
         command_delay_steps=5, battery_vin=6.0, shove_force=2.5, floor_friction=0.3
     ),  # 100 ms
+    # Single-knob ablation: each knob alone at its severe value, everything else nominal.
+    'delay': Mismatch(command_delay_steps=5),
+    'battery': Mismatch(battery_vin=6.0),  # "reduced motor strength" in Q3
+    'shoves': Mismatch(shove_force=2.5),
+    'friction': Mismatch(floor_friction=0.3),
+    # Q3 training mix: half the episodes at 7.4 V (nominal), half at 6.0 V (reduced).
+    'batterymix': Mismatch(battery_vin_choices=(7.4, 6.0)),
 }

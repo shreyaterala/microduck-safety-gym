@@ -17,6 +17,11 @@ intermediate checkpoints (OmniSafe's default saves only every 100 epochs).
 
     python scripts/capture_training.py "runs/PPOLag-{SafetyMicroduckGoal1-v0}/seed-000-<time>"
     python scripts/capture_training.py <run dir> --watch
+
+``--env`` rolls the checkpoints out on a different env (train nominal, deploy mismatched) and
+writes to ``<run>/capture-<env id>/`` instead, so each deployment level gets its own eval.csv:
+
+    python scripts/capture_training.py <run dir> --env SafetyMicroduckGoal1MismatchSevere-v0
 """
 
 from __future__ import annotations
@@ -29,9 +34,9 @@ from pathlib import Path
 
 import numpy as np
 
-import microduck_safety_gym.omnisafe_env  # noqa: F401  (must precede omnisafe)
-import omnisafe
 import torch
+
+from microduck_safety_gym.omnisafe_env import load_evaluator  # (must precede omnisafe)
 
 FPS = 25  # env runs at 50 Hz; keep every second frame
 EVAL_FIELDS = ['epoch', 'env_steps', 'return', 'cost', 'goals', 'falls', 'length', 'episodes']
@@ -103,16 +108,18 @@ def evaluate_checkpoint(run_dir: Path, ckpt: Path, args, cfg: dict) -> tuple[dic
     """Roll out ``ckpt`` on fixed seeds; return eval metrics and annotated frames of episode 0."""
     epoch = int(ckpt.stem.split('-')[1])
     steps = epoch * cfg['algo_cfgs']['steps_per_epoch']
-    evaluator = omnisafe.Evaluator(render_mode='rgb_array')
-    evaluator.load_saved(
-        save_dir=str(run_dir),
-        model_name=ckpt.name,
+    evaluator = load_evaluator(
+        run_dir,
+        ckpt.name,
+        env_id=args.env,
         camera_name=args.camera,
         width=args.width,
         height=args.height,
     )
     env, actor = evaluator._env, evaluator._actor  # noqa: SLF001
     header = f"{cfg['algo']} | epoch {epoch} | {steps / 1e3:,.0f}k env steps"
+    if args.env:
+        header += f" | on {args.env.removeprefix('SafetyMicroduck')}"
 
     results, frames = [], []
     for ep in range(args.eval_episodes):
@@ -240,7 +247,7 @@ def build_progression(out_dir: Path, cfg: dict, clip_seconds: float) -> None:
 def process(run_dir: Path, args) -> bool:
     """Capture any new checkpoints; return True once the final checkpoint is captured."""
     cfg = run_config(run_dir)
-    out_dir = run_dir / 'capture'
+    out_dir = run_dir / (f'capture-{args.env}' if args.env else 'capture')
     out_dir.mkdir(exist_ok=True)
     done_epochs = {int(e['epoch']) for e in read_eval(out_dir / 'eval.csv')}
     new = [(e, p) for e, p in checkpoints(run_dir) if e not in done_epochs]
@@ -269,6 +276,9 @@ def main() -> None:
     parser.add_argument('--watch', action='store_true', help='keep capturing until training ends')
     parser.add_argument('--poll', type=float, default=60.0, help='seconds between checks (--watch)')
     parser.add_argument('--eval-episodes', type=int, default=3)
+    parser.add_argument(
+        '--env', default=None, help='evaluate on this env id instead of the training env'
+    )
     parser.add_argument('--seed', type=int, default=1000, help='first eval seed (fixed per run)')
     parser.add_argument('--camera', default='fixednear', help='fixednear, fixedfar, track, vision')
     parser.add_argument('--width', type=int, default=640)
@@ -287,7 +297,8 @@ def main() -> None:
         if not args.watch or finished:
             break
         time.sleep(args.poll)
-    print(f'outputs in {args.run_dir / "capture"}')
+    out = f'capture-{args.env}' if args.env else 'capture'
+    print(f'outputs in {args.run_dir / out}')
 
 
 if __name__ == '__main__':

@@ -22,7 +22,7 @@ Two embodiment details have no Point equivalent:
   zero command, so every episode starts from a settled stance rather than a drop.
 
 ``mismatch`` (see ``mismatch.py``) optionally adds command delay, battery sag and random shoves.
-It defaults to none; the ``...Mismatch{Moderate,Severe}-v0`` env ids set it.
+It defaults to none; the ``...Mismatch<Level>-v0`` env ids set it.
 """
 
 from __future__ import annotations
@@ -72,6 +72,7 @@ class Microduck(BaseAgent):
         self._target = np.zeros(3)
         self._command = np.zeros(3)
         self.mismatch = Mismatch()
+        self.battery_vin = self.mismatch.battery_vin
         self._delayed: collections.deque = collections.deque()
         self._next_shove = np.inf
         self._shove_end = -np.inf
@@ -164,7 +165,12 @@ class Microduck(BaseAgent):
 
         # Bind first: BAM's MujocoController calls mj_setConst, which leaves data.qpos at qpos0
         # and would undo the standing pose set below.
-        self.controller.bind(model, data, vin=self.mismatch.battery_vin)
+        vin = self.mismatch.battery_vin
+        if self.mismatch.battery_vin_choices:
+            choices = self.mismatch.battery_vin_choices
+            vin = float(choices[int(self.random_generator.uniform(0, len(choices)))])
+        self.battery_vin = vin  # this episode's supply voltage
+        self.controller.bind(model, data, vin=vin)
 
         free = model.joint('trunk_base_freejoint')
         qadr = free.qposadr[0]
