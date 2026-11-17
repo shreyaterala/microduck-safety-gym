@@ -1,0 +1,58 @@
+[project]
+name = "microduck-safety-gym"
+version = "0.1.0"
+description = "Pollen Robotics' Microduck biped as a Safety Gymnasium agent, driven by its pretrained walking policy."
+readme = "README.md"
+# 3.12 exactly: the BAM actuator model (better-actuator-models) requires >=3.12,<3.13.
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "safety-gymnasium==1.0.0",
+    "omnisafe==0.5.0",
+    "mujoco>=3.3,<3.8",
+    "better-actuator-models[mujoco]",
+    "onnxruntime>=1.20",
+    "huggingface-hub>=0.24",
+    "numpy<2",
+    "imageio[ffmpeg]>=2.30",
+    # CUDA build (see [tool.uv.sources]); 2.14.1 is the newest with Windows CUDA 13.0 wheels,
+    # which the RTX 50-series (Blackwell) needs.
+    "torch==2.14.1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+override-dependencies = [
+    # safety-gymnasium 1.0.0 pins mujoco==2.3.3; BAM's CPU controller needs MuJoCo 3 (MjSpec).
+    # The Safety Gymnasium code paths used here run unchanged on MuJoCo 3.
+    "mujoco>=3.3,<3.8",
+    # bam depends on the PyPI stub `zmq==0.0.0` (broken wheel) for messaging we never import.
+    "zmq ; python_version < '3.0'",
+    # bam pins protobuf<4 for the same unused messaging; keep a version with wheels.
+    "protobuf>=4.0,<7.0",
+    # safety-gymnasium pins pygame==2.1.0 and omnisafe pins numpy 1.23.x; neither has Python 3.12
+    # wheels. These are the oldest releases that do, and stay API-compatible with both packages.
+    "pygame>=2.5",
+    "numpy>=1.26,<2",
+    # omnisafe 0.5.0 pins pandas==2.0.3 (no 3.12 wheels) and imports the moviepy 1.x API.
+    "pandas>=2.1,<2.3",
+    "moviepy<2",
+]
+
+[tool.uv.sources]
+# Same commit microduck_rl's uv.lock pins, i.e. the actuator model the walking policies were trained with.
+better-actuator-models = { git = "https://github.com/Rhoban/bam.git", rev = "62bd8ce12154340be97e06f7f41a0ca8f116d967" }
+torch = { index = "pytorch-cu130" }
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["microduck_safety_gym*"]
