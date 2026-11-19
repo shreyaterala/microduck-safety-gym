@@ -79,21 +79,37 @@ Assets are fetched on first use anyway and are not committed:
 
 | Script | What it does |
 |---|---|
-| `scripts/demo_goal.py` | Hand-written controller that turns toward the goal and walks; `--avoid-hazards`, `--video out.mp4` |
-| `scripts/train_baseline.py` | OmniSafe PPO / PPO-Lag / any OmniSafe algo with its stock Safety Gymnasium config |
-| `scripts/evaluate_baseline.py` | Score a checkpoint (`omnisafe.Evaluator`), optional video |
-| `scripts/capture_training.py` | Roll out every checkpoint of a run: labeled videos, eval CSV, training curves, progression video |
+| `scripts/demo_goal.py` | B0 goal-lidar baseline (`--cbf` for M3 CBF safety filter, `--video out.mp4`) |
+| `scripts/train_primal_dual.py` | M2 primal-dual random search on linear policy (`single`, `q3-standard`, `q3-robust`, optional `--cbf`) |
+| `scripts/evaluate_experiments.py` | 100-layout evaluation for B0, B0+M3, M2, and M2+M3 across all mismatch levels and single-knob ablations |
+| `scripts/train_baseline.py` | Optional OmniSafe PPO / PPO-Lag reference baselines with stock Safety Gymnasium config |
+| `scripts/evaluate_baseline.py` | Score an OmniSafe checkpoint (`omnisafe.Evaluator`), optional video |
+| `scripts/capture_training.py` | Roll out every checkpoint of an OmniSafe run: labeled videos, eval CSV, training curves, progression video |
 | `scripts/check_gait.py` | Walking-policy speed and turn tracking, outside Safety Gymnasium |
 | `scripts/check_terrain.py` | Walking policy (no retraining) on low friction, bumps, slopes, ledges and steps: speed, drift, falls, recovery |
 
-### Scripted demo
+### Scripted demo (B0 and B0+M3)
 
 ```bash
-uv run python scripts/demo_goal.py --episodes 3 --avoid-hazards
-uv run python scripts/demo_goal.py --episodes 1 --avoid-hazards --video runs/videos/demo.mp4
+uv run python scripts/demo_goal.py --episodes 3
+uv run python scripts/demo_goal.py --episodes 1 --cbf --video runs/videos/demo_cbf.mp4
 ```
 
-Seeds 0–2 reach 1–2 goals per episode (return ≈ 2.6–3.7), with no falls and no hazard cost.
+### Main experiments (M2 primal-dual & 100-layout evaluation)
+
+```bash
+# Q2: evaluate B0 and B0+M3 (CBF) on 100 fixed layouts across all levels & single-knob ablations
+uv run python scripts/evaluate_experiments.py --method b0 --episodes 100
+uv run python scripts/evaluate_experiments.py --method b0+cbf --episodes 100
+
+# Q1: train M2 (122-param linear policy, random search) on nominal and severe mismatch
+uv run python scripts/train_primal_dual.py --mode single --env SafetyMicroduckGoal1-v0 --seed 0
+uv run python scripts/train_primal_dual.py --mode single --env SafetyMicroduckGoal1MismatchSevere-v0 --seed 0
+
+# Q3: standard (single lambda) vs. robust (one lambda per motor strength) across 7.4 V and 6.0 V
+uv run python scripts/train_primal_dual.py --mode q3-standard --seed 0
+uv run python scripts/train_primal_dual.py --mode q3-robust --seed 0
+```
 
 ### RL baselines
 
@@ -208,9 +224,12 @@ vector envs would import `safety_gymnasium` before this package.
 microduck_safety_gym/
   __init__.py      registers the agent and SafetyMicroduck* envs
   agent.py         Microduck(BaseAgent): action scaling, slew limit, fall check, reset/settle
-  controller.py    walking policy (ONNX) + BAM actuators
-  model.py         builds the Safety Gymnasium agent XML from Pollen's MJCF
   builder.py       Builder whose physics loop runs the policy tick and BAM updates
+  controller.py    walking policy (ONNX) + BAM actuators
+  controllers.py   B0 (LidarGoalPolicy), M2 (LinearPolicy), M3 (CBFSafetyFilter + 2-D QP)
+  eval_metrics.py  episode rollout and Section 5 metrics (cost, falls, stalls, incursion, tracking error)
+  mismatch.py      mismatch knobs and levels (Moderate, Severe, single-knob ablations, BatteryMix)
+  model.py         builds the Safety Gymnasium agent XML from Pollen's MJCF
   omnisafe_env.py  lets OmniSafe accept the Microduck env ids
   paths.py         asset locations and fetching
   _compat.py       Python 3.12 / MuJoCo 3 fixes for safety-gymnasium 1.0.0
